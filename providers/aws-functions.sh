@@ -149,8 +149,13 @@ instance_pretty() {
             type=$(echo "$type" | tr -d '"')
 
             # Fetch monthly cost for this instance type
-            cost=$(echo "$costs" | jq -r ".Prices[] | select(.InstanceType == \"$type\").MonthlyPrice")
+            cost=$(jq -r --arg type "$type" '.Prices[] | select(.InstanceType == $type).MonthlyPrice' <<<"$costs")
             cost=${cost:-0}
+
+            # Validate numeric cost
+            if ! [[ "$cost" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                cost="0"
+            fi
 
             typeData=$(echo "$data" | grep ",\"$type\",")
 
