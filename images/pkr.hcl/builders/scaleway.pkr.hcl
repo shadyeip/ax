@@ -16,14 +16,14 @@ variable "snapshot_name" {
 
 variable "default_disk_size" {
   type    = number
-  default = 20
+  default = 50
 }
 
 source "scaleway" "packer" {
   project_id = var.default_project_id
   access_key = var.access_key
   secret_key = var.secret_key
-  image = "ubuntu_focal"
+  image = "ubuntu_jammy"
   zone = var.region
   commercial_type = var.default_size
   ssh_username = "root"

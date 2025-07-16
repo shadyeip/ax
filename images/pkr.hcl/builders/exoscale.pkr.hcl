@@ -22,7 +22,7 @@ variable "default_disk_size" {
 source "exoscale" "packer" {
   api_key                  = var.api_key
   api_secret               = var.api_secret
-  instance_template        = "Linux Ubuntu 20.04 LTS 64-bit"
+  instance_template        = "Linux Ubuntu 22.04 LTS 64-bit"
   instance_type            = var.default_size
   instance_security_groups = [var.security_group_name]
   template_zones           = [var.region]

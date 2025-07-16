@@ -1,6 +1,6 @@
 {
   "variables": {
-    "default_disk_size": "20"
+    "default_disk_size": "50"
   },
   "builders": [
     {
@@ -8,7 +8,7 @@
       "project_id": "{{user `default_project_id`}}",
       "access_key": "{{user `access_key`}}",
       "secret_key": "{{user `secret_key`}}",
-      "image": "ubuntu_focal",
+      "image": "ubuntu_jammy",
       "zone": "{{user `region`}}",
       "commercial_type": "{{user `default_size`}}",
       "ssh_username": "root",

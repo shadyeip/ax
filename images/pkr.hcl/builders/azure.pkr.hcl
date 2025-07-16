@@ -27,8 +27,8 @@ source "azure-arm" "packer" {
 
   os_type           = "Linux"
   image_publisher   = "Canonical"
-  image_offer       = "0001-com-ubuntu-server-focal-daily"
-  image_sku         = "20_04-daily-lts-gen2"
+  image_offer       = "0001-com-ubuntu-server-jammy"
+  image_sku         = "22_04-lts-gen2"
   vm_size           = var.default_size
 
 }

@@ -223,6 +223,7 @@ for r in $all_regions; do
     --output text 2>/dev/null)
 
   if [[ -z "$first_group_id" ]]; then
+    mkdir -p "$AXIOM_PATH/tmp/"
     echo "$group_id" > "$AXIOM_PATH/tmp/sg_id"
     echo "$owner_id" > "$AXIOM_PATH/tmp/sg_owner"
   fi

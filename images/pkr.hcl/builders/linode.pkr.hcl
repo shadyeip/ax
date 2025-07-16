@@ -20,7 +20,7 @@ source "linode" "packer" {
   instance_label   = var.snapshot_name
   image_description = "Axiom image"
   linode_token     = var.linode_key
-  image            = "linode/ubuntu20.04"
+  image            = "linode/ubuntu22.04"
   region           = var.region
   instance_type    = var.default_size
   image_create_timeout = "60m"
