@@ -488,6 +488,7 @@ merge_output() {
         mkdir $tmp/merge
         find $tmp/output -type f -print0 | xargs -0 -I{} cp --backup=t {} $tmp/merge
         output_lines=$(ls $tmp/merge | wc -l)
+        find "$tmp/merge" -type f ! -name '*.xml' -exec mv -n {} {}.xml \;
         "$AXIOM_PATH/interact/nMap_Merger.py" -d "$tmp/merge" -o "$tmp/merge.xml" >> /dev/null
         mv "$tmp/merge.xml" "$outfile"
         mv "$tmp/merge.xml.html" "$outfile.html"
