@@ -3,7 +3,6 @@
 AXIOM_PATH="$HOME/.axiom"
 source "$AXIOM_PATH/interact/includes/vars.sh"
 
-service_account_key=""
 region=""
 zone=""
 provider="gcp"
@@ -131,12 +130,13 @@ function check_gcp_billing_and_apis() {
 
 # Function to check and set project ID
 function set_project_id() {
-    project_id=$(jq -r .project_id "$service_account_key")
+    echo -e -n "${Green}Please enter your GCP Project ID (required): \n>> ${Color_Off}"
+    read -p "Enter Project ID: " project_id
 
-    if [[ "$project_id" == "null" || -z "$project_id" ]]; then
-        echo -e "${BRed}Project ID is missing in the service account key. Please enter the project ID manually:${Color_Off}"
+    while [[ -z "$project_id" ]]; do
+        echo -e "${BRed}Project ID cannot be empty. Please enter your GCP Project ID:${Color_Off}"
         read -p "Enter Project ID: " project_id
-    fi
+    done
 
     # Set the project ID using gcloud
     if [[ -n "$project_id" ]]; then
@@ -148,66 +148,12 @@ function set_project_id() {
     fi
 }
 
-# Function not currently used
-# TODO implement different auth options
-function auth_type() {
-    echo -e "${BGreen}Please select the authentication method you would like to use for GCP:${Color_Off}"
-    echo "1) Service Account Key File"
-    echo "2) OAuth2 User Authentication"
-    echo "3) Application Default Credentials (ADC)"
-    echo -n "Select (1/2/3): "
-    read auth_method
-
-    case $auth_method in
-        1)
-            # Service Account Key File
-            echo -e -n "${Green}Please enter the path to your service account key (required): \n>> ${Color_Off}"
-            read service_account_key
-            while [[ ! -f "$service_account_key" ]]; do
-                echo -e "${BRed}Please provide a valid service account key file path.${Color_Off}"
-                echo -e -n "${Green}Please enter the path to your service account key (required): \n>> ${Color_Off}"
-                read service_account_key
-            done
-
-            # Activate service account
-            gcloud auth activate-service-account --key-file="$service_account_key"
-
-            # Set the project ID using the key file
-            set_project_id
-            ;;
-        2)
-            # OAuth2 User Authentication
-            echo -e "${Green}Using OAuth2 User Authentication (gcloud auth login)...${Color_Off}"
-            gcloud auth login
-            ;;
-        3)
-            # Application Default Credentials (ADC)
-            echo -e "${Green}Using Application Default Credentials (gcloud auth application-default login)...${Color_Off}"
-            gcloud auth application-default login
-            ;;
-        *)
-            echo -e "${BRed}Invalid option. Please choose 1, 2, or 3.${Color_Off}"
-            gcp_setup
-            exit 1
-            ;;
-    esac
-}
 
 function gcp_setup() {
-    # Service Account Key File
-    echo -e -n "${Green}Please enter the path to your service account key (required): \n>> ${Color_Off}"
-    read service_account_key
-    service_account_key=$(realpath "$service_account_key")
-      while [[ ! -f "$service_account_key" ]]; do
-      echo -e "${BRed}Please provide a valid service account key file path.${Color_Off}"
-      echo -e -n "${Green}Please enter the path to your service account key (required): \n>> ${Color_Off}"
-      read service_account_key
-    done
+    echo -e "${BGreen}Authenticating with Application Default Credentials (ADC)...${Color_Off}"
+    gcloud auth application-default login
 
-    # Activate service account
-    gcloud auth activate-service-account --key-file="$service_account_key"
-
-    # Set the project ID using the key file
+    # Set the project ID (ADC should handle this, but we'll keep the function for consistency)
     set_project_id
 
     # Check if billing is enabled and APIs are activated after authentication
@@ -280,10 +226,10 @@ function gcp_setup() {
     check_and_create_firewall_rule
 
     # Generate the profile data with the correct keys
-    data="$(echo "{\"service_account_key\":\"$service_account_key\",\"project\":\"$project_id\",\"physical_region\":\"$region\",\"default_size\":\"$machine_type\",\"region\":\"$zone\",\"provider\":\"gcp\",\"default_disk_size\":\"$disk_size\"}")"
+    data="$(echo "{\"project\":\"$project_id\",\"physical_region\":\"$region\",\"default_size\":\"$machine_type\",\"region\":\"$zone\",\"provider\":\"gcp\",\"default_disk_size\":\"$disk_size\"}")"
 
     echo -e "${BGreen}Profile settings below: ${Color_Off}"
-    echo "$data" | jq '.gcp_service_account_key = "**********************"'
+    echo "$data" | jq
     echo -e "${BWhite}Press enter if you want to save these to a new profile, type 'r' if you wish to start again.${Color_Off}"
     read ans
 

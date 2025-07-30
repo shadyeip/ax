@@ -8,9 +8,6 @@ source "$AXIOM_PATH/interact/includes/system-notification.sh"
 # Centralized disk defaults
 DEFAULT_DISK_AWS=20
 DEFAULT_DISK_GCP=20
-DEFAULT_DISK_SCALEWAY=50
-DEFAULT_DISK_EXOSCALE=50
-DEFAULT_DISK_IBM=100
 
 account_path=$(ls -la "$AXIOM_PATH/axiom.json" | rev | cut -d " " -f 1 | rev)
 accounts=$(ls -l "$AXIOM_PATH/accounts/" | grep "json" | grep -v 'total ' | awk '{ print $9 }' | sed 's/\.json//g')
