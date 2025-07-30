@@ -24,7 +24,7 @@ usage() {
     echo -e "  Manage the default boot disk size for Ax instances."
     echo
     echo -e "${BWhite}Supported Providers:${Color_Off}"
-    echo -e "  Supports: aws, gcp, scaleway, exoscale"
+    echo -e "  Supports: aws, gcp"
     echo -e "  Other providers use fixed disk sizes tied to the instance type. Use '${BGreen}ax sizes${Color_Off}' to view options."
     echo
     echo -e "${BWhite}Commands:${Color_Off}"
@@ -46,7 +46,7 @@ usage() {
 
 supports_disk() {
     case "$provider" in
-        aws|gcp|scaleway|exoscale) return 0 ;;
+        aws|gcp) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -55,8 +55,6 @@ get_default_disk_size() {
     case "$provider" in
         aws) echo "$DEFAULT_DISK_AWS" ;;
         gcp) echo "$DEFAULT_DISK_GCP" ;;
-        scaleway) echo "$DEFAULT_DISK_SCALEWAY" ;;
-        exoscale) echo "$DEFAULT_DISK_EXOSCALE" ;;
         *) echo "" ;;
     esac
 }
@@ -66,8 +64,6 @@ valid_disk_size() {
     case "$provider" in
         aws) [[ $size -ge 1 && $size -le 65536 ]] ;;
         gcp) [[ $size -ge 10 && $size -le 65536 ]] ;;
-        scaleway) [[ $size -ge 10 && $size -le 600 ]] ;;
-        exoscale) [[ $size -ge 10 && $size -le 51200 ]] ;;
         *) return 1 ;;
     esac
 }
@@ -152,8 +148,6 @@ case "$cmd" in
         case "$provider" in
             aws)       echo -e "Choose boot disk size between 1GB and 65536GB (64TiB)." ;;
             gcp)       echo -e "Choose boot disk size between 10GB and 65536GB (64TiB)." ;;
-            scaleway)  echo -e "Choose boot disk size between 10GB and 600GB." ;;
-            exoscale)  echo -e "Choose boot disk between 10GB and 51200GB (50TiB)." ;;
         esac
 
         echo -e "\nExamples:"

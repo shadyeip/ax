@@ -148,9 +148,6 @@ done
 ###########################################################################################################
 # Change timeout_sleep depending on Cloud provider
 #
-if [[ "$provider" == "linode" ]]; then
-    timeout_sleep=6
-fi
 
 ###########################################################################################################
 # If -i /--instances isnt used, default to three instances
@@ -262,10 +259,6 @@ echo -e "${BWhite}Initializing new fleet '${BGreen}$gen_name${BWhite}' with '${B
 echo -e "${BWhite}INITIALIZING IN 5 SECONDS, CTRL+C to quit... ${Color_Off}"
 sleep 5
 
-# Transfer image (supports DO and AWS)
-if [ "$provider" == "do" ] || [ "$provider" == "aws" ]; then
- transfer_snapshot "$image_id" "$image" "${formatted_regions[*]}"
-fi
 
 # Initialize variables
 num_regions=${#formatted_regions[@]}

@@ -134,28 +134,6 @@ do
     fi
 done
 
-#############################################################################################################
-# IBM Cloud Classic specific logic here:
-# Update legacy account config to use instance flavor instead of CPU/MEM
-#
-if [[ "$provider" == "ibm-classic" ]] || [[ "$provider" == "ibm" ]]; then
-
- # Get the target file of the symlink
- symlink_target=$(readlink $AXIOM_PATH/axiom.json)
-
- # Get the value of default_size from the target file
- default_size=$(jq -r '.default_size' "$symlink_target")
-
- # Check if the value of default_size contains only numbers
- if [[ "$default_size" =~ ^[0-9]+$ ]]; then
-   # If it only contains numbers, replace the value with C1_2X2X25
-   jq 'del(.cpu) | .default_size = "C1_2X2X25"' "$symlink_target" > $AXIOM_PATH/accounts/ibm-classic-temp.json && mv $AXIOM_PATH/accounts/ibm-classic-temp.json "$symlink_target"
-   echo -e "${BYellow}Warning: Detected legacy account configuration for IBM Classic.${Color_Off}"
-   echo -e "${BYellow}Replacing default_size in axiom.json with C1_2X2X25${Color_Off}"
-   echo -e "${BYellow}You can always change this later by running ${Color_Off}'${BGreen}ax sizes ls${Color_Off}' ${BYellow}to list all sizes${Color_Off}"
-   echo -e "${BYellow}Then select a new default_size ${Color_Off}'${BGreen}ax sizes select \$size${Color_Off}'"
- fi
-fi
 
 ############################################################################################################
 # Get the provisioner file
@@ -341,45 +319,9 @@ elif [[ "$provider" == "azure" ]]; then
  jq '.op = "***************************************************************************************************************************"' |
  jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
 
-elif [[ "$provider" == "do" ]]; then
- cat "$account_path" | jq '.do_key = "************************************************************************"'| \
- jq '.op = "***************************************************************************************************************************"' | \
  jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
 
-elif [[ "$provider" == "ibm-classic" ]] || [[ "$provider" == "ibm" ]]; then
- cat "$account_path" | jq '.sl_key = "************************************************************************" | .ibm_cloud_api_key = "***************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
 
-elif [[ "$provider" == "ibm-vpc" ]]; then
- cat "$account_path" | jq '.ibm_cloud_api_key = "***************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
-
-elif [[ "$provider" == "linode" ]]; then
- cat "$account_path" | jq '.linode_key = "*******************************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
-
-elif [[ "$provider" == "hetzner" ]]; then
- cat "$account_path" |jq '.hetzner_key =  "****************************************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
-
-elif [[ "$provider" == "scaleway" ]]; then
- cat "$account_path" |jq '.secret_key = "************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
-
-elif [[ "$provider" == "gcp" ]]; then
- cat "$account_path" | \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
-
-elif [[ "$provider" ==  "exoscale" ]]; then
- cat "$account_path" | jq '.api_secret = "************************************"'| \
- jq '.op = "***************************************************************************************************************************"' |
- jq '.imageid = "'$snapshot_name'"' | jq '.provisioner = "'$provisioner'"' | jq '.sshkey = "'$sshkey'"'
 
 else
  cat "$account_path"
@@ -427,13 +369,6 @@ fi
     "$NOTIFY_CMD" "Axiom Info" "Build completed successfully!"
 else
    echo -e "${BRed}Your build failed :( Please take a look at the errors!${Color_Off}"
-   if [[ "$provider" ==  "linode" ]]; then
-        echo -e "${Yellow}This can happen sometimes, if you have a [404] error while using Linode, this is likely because you need to request support for a larger image size${Color_Off}"
-        echo -e "${Yellow}If you are using the default provisioner you need to request an increase to 45GB or higher! ${Color_Off}"
-        echo -e "${Yellow}Please open a Linode support ticket saying 'Hello! I have recently installed the Ax Framework https://github.com/attacksurge/ax and would like to request an image increase to 75GB please for the purposes of bulding the packer image. Thank you have a great day!'${Color_Off}"
-        echo -e "${Yellow}You could try with another provisioner (reconftw is 14 GB in size) ${Color_Off}"
-        echo -e "${Yellow}Use 'axiom-images ls' and delete any image before trying to build again ${Color_Off}"
-   fi
    echo -e "${Yellow}Verify the account is properly configured and/or try a different region.${Color_Off}"
    echo -e "${Yellow}For support, take a screenshot of the last 20 lines and open a issue at https://github.com/attacksurge/ax/issues${Color_Off}"
    echo -e "${Green}Sometimes just running axiom-build again can work, so please try at least once: 'axiom-build', thanks!${Color_Off}"

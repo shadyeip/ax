@@ -29,32 +29,11 @@ then
 			cat $AXIOM_PATH/axiom.json | jq -r ".physical_region=\"$physical_region\"" | jq -r ".region=\"$2\"" |jq -r > $AXIOM_PATH/axiom.json.new
 		fi
 
-                if [ "$provider" = "ibm-vpc" ]; then
-                        physical_region=$(echo $2| rev | cut -d '-' -f2- | rev)
-                        availability_zones=$(list_regions)
-                        # Check if selected availability zone is in the list of valid availability zones
-                        if ! echo "$2" | grep -qw "$availability_zones"; then
-                                echo -e "${BRed}Error: for IBM Cloud VPC you must select an availability zone as a region${Color_Off}"
-                                echo -e "${BRed}List all availability zones with ax region ls.. exiting${Color_Off}"
-                                exit
-                        fi
-                        cat $AXIOM_PATH/axiom.json | jq -r ".physical_region=\"$physical_region\"" | jq -r ".region=\"$2\"" |jq -r > $AXIOM_PATH/axiom.json.new
-                        ibmcloud target -r $physical_region -g "$(jq -r '.resource_group' "$AXIOM_PATH"/axiom.json)" -q
-                fi
 
                 if [ "$provider" = "aws" ]; then
                         aws configure set region $2
                 fi
 
-                if [ "$provider" = "exoscale" ]; then
-                         if [[ $(uname) == "Darwin" ]]; then
-                               CONFIG_PATH="$HOME/Library/Application Support/exoscale"
-                         else
-                               CONFIG_PATH="$HOME/.config/exoscale"
-                         fi
-                         tmp_file=$(mktemp)
-                         sed "s/defaultZone = '[^']*'/defaultZone = '$2'/g" "$CONFIG_PATH/exoscale.toml" > "$tmp_file" && cp "$tmp_file" "$CONFIG_PATH/exoscale.toml" && rm "$tmp_file"
-                fi
 
 	mv $AXIOM_PATH/axiom.json.new $account_path
 	echo -e "${BWhite}Selected region $2${Color_Off}"
