@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-AXIOM_PATH="$(dirname "$SCRIPT_DIR")" # Assumes gcp.sh is in interact/account-helpers/
+AXIOM_PATH="$(dirname "$(dirname "$SCRIPT_DIR")")" # Assumes gcp.sh is in interact/account-helpers/
 source "$AXIOM_PATH/interact/includes/vars.sh"
 
 region=""
@@ -150,9 +150,20 @@ function set_project_id() {
 }
 
 
+# Function to detect if running on a GCP Compute Engine VM
+is_gcp_vm() {
+    curl -s -f -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/id &> /dev/null
+    return $?
+}
+
 function gcp_setup() {
-    echo -e "${BGreen}Authenticating with Application Default Credentials (ADC)...${Color_Off}"
-    gcloud auth application-default login
+    if is_gcp_vm; then
+        echo -e "${BGreen}Running on a GCP Compute Engine VM. Using VM's service account for ADC.${Color_Off}"
+        # No need to run gcloud auth application-default login
+    else
+        echo -e "${BGreen}Authenticating with Application Default Credentials (ADC)...${Color_Off}"
+        gcloud auth application-default login
+    fi
 
     # Set the project ID (ADC should handle this, but we'll keep the function for consistency)
     set_project_id
