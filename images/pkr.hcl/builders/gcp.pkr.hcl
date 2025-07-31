@@ -28,7 +28,6 @@ source "googlecompute" "packer" {
   image_family         = "axiom-images"
   source_image_family  = "ubuntu-2204-lts"
   ssh_username         = "root"
-  credentials_file     = var.service_account_key
   network              = "default"    # Specify your network or use the default
   subnetwork           = "default"    # Specify your subnetwork if required
   use_internal_ip      = false        # Disable internal IP to avoid networking issues

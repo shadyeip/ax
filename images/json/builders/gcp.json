@@ -13,7 +13,6 @@
       "image_family": "axiom-images",
       "source_image_family": "ubuntu-2204-lts",
       "ssh_username": "root",
-      "credentials_file": "{{user `service_account_key`}}",
       "network": "default",
       "subnetwork": "default",
       "use_internal_ip": false,
