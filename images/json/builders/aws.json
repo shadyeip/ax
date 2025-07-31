@@ -4,11 +4,10 @@
   },
   "builders": [
     {
-      "access_key": "{{ user `aws_access_key` }}",
+      "profile": "{{ user `aws_profile` }}",
       "ami_name": "{{ user `snapshot_name` }}",
       "instance_type": "{{ user `default_size` }}",
       "region": "{{ user `region` }}",
-      "secret_key": "{{ user `aws_secret_access_key` }}",
       "launch_block_device_mappings": [
         {
           "device_name": "/dev/sda1",

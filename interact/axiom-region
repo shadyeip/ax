@@ -31,7 +31,13 @@ then
 
 
                 if [ "$provider" = "aws" ]; then
-                        aws configure set region $2
+                        # Get AWS profile option from axiom.json
+                        aws_profile=$(jq -r '.aws_profile // empty' "$AXIOM_PATH/axiom.json" 2>/dev/null)
+                        if [[ -n "$aws_profile" && "$aws_profile" != "null" ]]; then
+                                aws configure set region $2 --profile "$aws_profile"
+                        else
+                                aws configure set region $2
+                        fi
                 fi
 
 

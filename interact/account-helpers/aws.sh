@@ -84,25 +84,31 @@ fi
 
 function awssetup(){
 
-echo -e -n "${Green}Please enter your AWS Access Key ID (required): \n>> ${Color_Off}"
-read ACCESS_KEY
-while [[ "$ACCESS_KEY" == "" ]]; do
-	echo -e "${BRed}Please provide an AWS Access KEY ID, your entry contained no input.${Color_Off}"
-	echo -e -n "${Green}Please enter your token (required): \n>> ${Color_Off}"
-	read ACCESS_KEY
+# List available AWS profiles
+echo -e "${BGreen}Available AWS profiles:${Color_Off}"
+aws configure list-profiles 2>/dev/null || echo "No profiles found. Please configure an AWS profile first using 'aws configure --profile <profile_name>'"
+
+echo -e -n "${Green}Please enter your AWS profile name (required): \n>> ${Color_Off}"
+read AWS_PROFILE
+while [[ "$AWS_PROFILE" == "" ]]; do
+	echo -e "${BRed}Please provide an AWS profile name, your entry contained no input.${Color_Off}"
+	echo -e -n "${Green}Please enter your AWS profile name (required): \n>> ${Color_Off}"
+	read AWS_PROFILE
 done
 
-echo -e -n "${Green}Please enter your AWS Secret Access Key (required): \n>> ${Color_Off}"
-read SECRET_KEY
-while [[ "$SECRET_KEY" == "" ]]; do
-	echo -e "${BRed}Please provide an AWS Secret Access Key, your entry contained no input.${Color_Off}"
-	echo -e -n "${Green}Please enter your token (required): \n>> ${Color_Off}"
-	read SECRET_KEY
-done
+# Verify the profile exists and retrieve credentials
+ACCESS_KEY=$(aws configure get aws_access_key_id --profile "$AWS_PROFILE" 2>/dev/null)
+SECRET_KEY=$(aws configure get aws_secret_access_key --profile "$AWS_PROFILE" 2>/dev/null)
 
-aws configure set aws_access_key_id "$ACCESS_KEY"
-aws configure set aws_secret_access_key "$SECRET_KEY"
-aws configure set output json
+if [[ -z "$ACCESS_KEY" ]] || [[ -z "$SECRET_KEY" ]]; then
+	echo -e "${BRed}Profile '$AWS_PROFILE' not found or missing credentials. Please configure it first using 'aws configure --profile $AWS_PROFILE'${Color_Off}"
+	exit 1
+fi
+
+echo -e "${BGreen}Using AWS profile: $AWS_PROFILE${Color_Off}"
+
+# Set output format for this profile
+aws configure set output json --profile "$AWS_PROFILE"
 
 default_region="us-west-2"
 echo -e -n "${Green}Please enter your default region (you can always change this later with axiom-region select \$region): Default '$default_region', press enter \n>> ${Color_Off}"
@@ -126,13 +132,14 @@ if [[ "$disk_size" == "" ]]; then
   echo -e "${Blue}Selected default option '20'${Color_Off}"
 fi
 
-aws configure set default.region "$region"
+aws configure set default.region "$region" --profile "$AWS_PROFILE"
 
 # Print available security groups
 echo -e "${BGreen}Printing Available Security Groups:${Color_Off}"
 (
   echo -e "GroupName\tGroupId\tOwnerId\tVpcId\tFromPort\tToPort"
   aws ec2 describe-security-groups \
+    --profile "$AWS_PROFILE" \
     --query 'SecurityGroups[*].{GroupName:GroupName,GroupId:GroupId,OwnerId:OwnerId,VpcId:VpcId,FromPort:IpPermissions[0].FromPort,ToPort:IpPermissions[0].ToPort}' \
     --output json | jq -r '.[] | [.GroupName, .GroupId, .OwnerId, .VpcId, .FromPort, .ToPort] | @tsv'
 ) | column -t
@@ -142,7 +149,7 @@ echo -e -n "${Green}Please enter a security group name above or press enter to c
 read SECURITY_GROUP
 
 # Get all available AWS regions
-all_regions=$(aws ec2 describe-regions --query "Regions[].RegionName" --output text)
+all_regions=$(aws ec2 describe-regions --profile "$AWS_PROFILE" --query "Regions[].RegionName" --output text)
 
 echo -e "${BGreen}Creating or reusing the security group '$SECURITY_GROUP' in ALL AWS regions...${Color_Off}"
 
@@ -166,6 +173,7 @@ for r in $all_regions; do
   echo -e "\n${BGreen}--- Region: $r ---${Color_Off}"
 
   existing_group_id=$(aws ec2 describe-security-groups \
+    --profile "$AWS_PROFILE" \
     --filters "Name=group-name,Values=$SECURITY_GROUP" \
     --region "$r" \
     --query "SecurityGroups[*].GroupId" \
@@ -174,6 +182,7 @@ for r in $all_regions; do
   if [[ "$existing_group_id" == "None" ]] || [[ -z "$existing_group_id" ]]; then
     echo -e "${BGreen}Creating Security Group '$SECURITY_GROUP' in region $r...${Color_Off}"
     create_output=$(aws ec2 create-security-group \
+      --profile "$AWS_PROFILE" \
       --group-name "$SECURITY_GROUP" \
       --description "Axiom SG" \
       --region "$r" 2>&1)
@@ -199,6 +208,7 @@ for r in $all_regions; do
  # Attempt to add the rule (port 2266 for 0.0.0.0/0)
  # If it already exists, AWS will throw an error that we can catch
   group_rules=$(aws ec2 authorize-security-group-ingress \
+    --profile "$AWS_PROFILE" \
     --group-id "$group_id" \
     --protocol tcp \
     --port 2266 \
@@ -217,6 +227,7 @@ for r in $all_regions; do
   fi
 
   owner_id=$(aws ec2 describe-security-groups \
+    --profile "$AWS_PROFILE" \
     --group-ids "$group_id" \
     --region "$r" \
     --query "SecurityGroups[*].OwnerId" \
@@ -241,7 +252,7 @@ else
   exit 1
 fi
 
-data="$(echo "{\"aws_access_key\":\"$ACCESS_KEY\",\"aws_secret_access_key\":\"$SECRET_KEY\",\"group_owner_id\":\"$group_owner_id\",\"security_group_name\":\"$SECURITY_GROUP\",\"security_group_id\":\"$last_group_id\",\"region\":\"$region\",\"provider\":\"aws\",\"default_size\":\"$size\",\"default_disk_size\":\"$disk_size\"}")"
+data="$(echo "{\"aws_profile\":\"$AWS_PROFILE\",\"aws_access_key\":\"$ACCESS_KEY\",\"aws_secret_access_key\":\"$SECRET_KEY\",\"group_owner_id\":\"$group_owner_id\",\"security_group_name\":\"$SECURITY_GROUP\",\"security_group_id\":\"$last_group_id\",\"region\":\"$region\",\"provider\":\"aws\",\"default_size\":\"$size\",\"default_disk_size\":\"$disk_size\"}")"
 
 echo -e "${BGreen}Profile settings below: ${Color_Off}"
 echo "$data" | jq '.aws_secret_access_key = "*************************************"'
@@ -269,4 +280,3 @@ $AXIOM_PATH/interact/axiom-account "$title"
 }
 
 awssetup
-

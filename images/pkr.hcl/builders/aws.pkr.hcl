@@ -20,8 +20,7 @@ variable "default_disk_size" {
 }
 
 source "amazon-ebs" "packer" {
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_access_key
+  profile    = var.aws_profile
   region     = var.region
   ami_name   = var.snapshot_name
   instance_type = var.default_size
@@ -50,4 +49,3 @@ source "amazon-ebs" "packer" {
 
 build {
   sources = ["source.amazon-ebs.packer"]
-

@@ -2,6 +2,15 @@
 
 AXIOM_PATH="$HOME/.axiom"
 
+# Get AWS profile from axiom.json configuration
+get_aws_profile() {
+    local profile
+    profile=$(jq -r '.aws_profile // empty' "$AXIOM_PATH/axiom.json" 2>/dev/null)
+    if [[ -n "$profile" && "$profile" != "null" ]]; then
+        echo "--profile $profile"
+    fi
+}
+
 ###################################################################
 #  Create Instance is likely the most important provider function :)
 #  needed for init and fleet
@@ -19,6 +28,8 @@ create_instance() {
         disk="20"
     fi
 
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
     disk_option="--block-device-mappings DeviceName=/dev/xvda,Ebs={VolumeSize=$disk,VolumeType=gp2,DeleteOnTermination=true}"
 
     security_group_name="$(cat "$AXIOM_PATH/axiom.json" | jq -r '.security_group_name')"
@@ -35,7 +46,7 @@ create_instance() {
     fi
 
     # Launch the instance using the determined security group option
-    aws ec2 run-instances \
+    aws ec2 run-instances --profile $aws_profile_option \
         --image-id "$image_id" \
         --count 1 \
         --instance-type "$size" \
@@ -78,7 +89,9 @@ delete_instance() {
         fi
     fi
 
-    if aws ec2 terminate-instances --instance-ids "$id" --region "$region" >/dev/null 2>&1; then
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    if aws ec2 terminate-instances --profile $aws_profile_option --instance-ids "$id" --region "$region" >/dev/null 2>&1; then
         echo "Deleted '$name' ($id) in $region."
     else
         echo "Failed to delete '$name'."
@@ -92,11 +105,13 @@ instances() {
     local tempdir
     tempdir=$(mktemp -d)
     local regions
-    regions=$(aws ec2 describe-regions --query "Regions[].RegionName" --output text)
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    regions=$(aws ec2 describe-regions --profile $aws_profile_option --query "Regions[].RegionName" --output text)
 
     # Fetch describe-instances for each region in parallel
     for region in $regions; do
-        aws ec2 describe-instances --region "$region" --output json > "$tempdir/$region.json" &
+        aws ec2 describe-instances --profile $aws_profile_option --region "$region" --output json > "$tempdir/$region.json" &
     done
     wait
 
@@ -328,12 +343,14 @@ get_image_id() {
     query="$1"
     region="${2:-$(jq -r '.region' "$AXIOM_PATH"/axiom.json)}"
     all_regions="$3"
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
 
     if [[ "$all_regions" == "--all-regions" ]]; then
         tempdir=$(mktemp -d)
-        for r in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text); do
+        for r in $(aws ec2 describe-regions --profile $aws_profile_option --query "Regions[].RegionName" --output text); do
             (
-                aws ec2 describe-images --owners self --region "$r" \
+                aws ec2 describe-images --profile $aws_profile_option --owners self --region "$r" \
                     --query "Images[*].[Name,ImageId]" --output json \
                 | jq -r --arg query "$query" --arg region "$r" '.[] | select(.[0] | startswith($query)) | "\(. [1]) \($region)"' > "$tempdir/$r.txt"
             ) &
@@ -346,7 +363,7 @@ get_image_id() {
             echo "Error: No region specified and no default region found in axiom.json."
             return 1
         fi
-        aws ec2 describe-images --owners self --region "$region" \
+        aws ec2 describe-images --profile $aws_profile_option --owners self --region "$region" \
             --query "Images[*].[Name,ImageId]" --output json \
         | jq -r --arg query "$query" '.[] | select(.[0] | startswith($query)) | .[1]'
     fi
@@ -356,11 +373,13 @@ get_image_id() {
 get_snapshots() {
     local tmp
     tmp=$(mktemp -d)
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
     printf "%-40s %-8s %-s\n" "Name" "Size(GB)" "Regions"
 
-    for region in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text); do
+    for region in $(aws ec2 describe-regions --profile $aws_profile_option --query "Regions[].RegionName" --output text); do
         (
-            aws ec2 describe-images --owners self --region "$region" \
+            aws ec2 describe-images --profile $aws_profile_option --owners self --region "$region" \
                 --query "Images[*].[Name,BlockDeviceMappings[0].Ebs.VolumeSize]" --output text \
             | awk -v r="$region" '{OFS="\t"; print $1, $2, r}' >> "$tmp/all.txt"
         ) &
@@ -405,6 +424,8 @@ get_snapshots() {
 delete_snapshot() {
     name="$1"
     tempdir=$(mktemp -d)
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
 
     get_image_id "$name" "" --all-regions > "$tempdir/images.txt"
 
@@ -416,15 +437,15 @@ delete_snapshot() {
 
     while read -r image_id region; do
         (
-            snapshot_id=$(aws ec2 describe-images --region "$region" --image-ids "$image_id" \
+            snapshot_id=$(aws ec2 describe-images --profile $aws_profile_option --region "$region" --image-ids "$image_id" \
                 --query 'Images[*].BlockDeviceMappings[*].Ebs.SnapshotId' --output text)
 
             echo -e "${Red}Deregistering image $image_id in $region...${Color_Off}"
-            aws ec2 deregister-image --image-id "$image_id" --region "$region" >/dev/null 2>&1
+            aws ec2 deregister-image --profile $aws_profile_option --image-id "$image_id" --region "$region" >/dev/null 2>&1
 
             if [[ -n "$snapshot_id" ]]; then
                 echo -e "${Red}Deleting snapshot $snapshot_id in $region...${Color_Off}"
-                aws ec2 delete-snapshot --snapshot-id "$snapshot_id" --region "$region" >/dev/null 2>&1
+                aws ec2 delete-snapshot --profile $aws_profile_option --snapshot-id "$snapshot_id" --region "$region" >/dev/null 2>&1
             fi
         ) &
     done < "$tempdir/images.txt"
@@ -437,7 +458,9 @@ delete_snapshot() {
 create_snapshot() {
         instance="$1"
         snapshot_name="$2"
-	aws ec2 create-image --instance-id "$(instance_id $instance)" --name $snapshot_name
+        local aws_profile_option
+        aws_profile_option=$(get_aws_profile)
+	aws ec2 create-image $aws_profile_option --instance-id "$(instance_id $instance)" --name $snapshot_name
 }
 
 # transfer-image to new region (init, fleet, fleet2)
@@ -445,6 +468,8 @@ transfer_snapshot() {
     local image_id="$1" image="$2" regions_string="$3"
     read -r -a regions <<< "$regions_string"
     local max_jobs=50
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
 
     [[ -z "$image_id" || -z "$image" || "${#regions[@]}" -eq 0 ]] && {
         echo -e "${BRed}Error: Missing arguments for AWS region transfer.${Color_Off}"
@@ -464,13 +489,13 @@ transfer_snapshot() {
         wait_for_jobs
 
         (
-            existing_ami_id=$(aws ec2 describe-images --region "$region" --owners self \
+            existing_ami_id=$(aws ec2 describe-images --profile $aws_profile_option --region "$region" --owners self \
                 --filters "Name=name,Values=$image" --query 'Images[0].ImageId' --output text) || true
 
             if [[ -z "$existing_ami_id" || "$existing_ami_id" == "None" ]]; then
                 echo -e "${BYellow}Transferring '${BRed}$image${BYellow}' to '${BRed}$region${BYellow}'...${Color_Off}"
 
-                copied_ami_id=$(aws ec2 copy-image \
+                copied_ami_id=$(aws ec2 copy-image --profile $aws_profile_option \
                     --source-image-id "$image_id" --source-region "$source_region" \
                     --region "$region" --name "$image" \
                     --description "Copied from $source_region:$image_id" \
@@ -487,7 +512,7 @@ transfer_snapshot() {
                 elapsed=0
 
                 while [ "$elapsed" -lt "$max_wait" ]; do
-                    state=$(aws ec2 describe-images \
+                    state=$(aws ec2 describe-images --profile $aws_profile_option \
                         --region "$region" \
                         --image-ids "$copied_ami_id" \
                         --query 'Images[0].State' --output text 2>/dev/null)
@@ -516,12 +541,16 @@ transfer_snapshot() {
 # Get data about regions
 # used by axiom-regions
 list_regions() {
-    aws ec2 describe-regions --query "Regions[*].RegionName" | jq -r '.[]'
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    aws ec2 describe-regions --profile $aws_profile_option --query "Regions[*].RegionName" | jq -r '.[]'
 }
 
 # used by axiom-regions
 regions() {
-    aws ec2 describe-regions --query "Regions[*].RegionName" | jq -r '.[]'
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    aws ec2 describe-regions --profile $aws_profile_option --query "Regions[*].RegionName" | jq -r '.[]'
 }
 
 ###################################################################
@@ -531,21 +560,27 @@ regions() {
 poweron() {
   instance_name="$1"
   id=$(instance_id "$instance_name")
-  aws ec2 start-instances --instance-ids "$id"
+  local aws_profile_option
+  aws_profile_option=$(get_aws_profile)
+  aws ec2 start-instances --profile $aws_profile_option --instance-ids "$id"
 }
 
 # axiom-power
 poweroff() {
   instance_name="$1"
   id=$(instance_id "$instance_name")
-  aws ec2 stop-instances --instance-ids "$id"  | jq -r '.StoppingInstances[0].CurrentState.Name'
+  local aws_profile_option
+  aws_profile_option=$(get_aws_profile)
+  aws ec2 stop-instances --profile $aws_profile_option --instance-ids "$id"  | jq -r '.StoppingInstances[0].CurrentState.Name'
 }
 
 # axiom-power
 reboot() {
   instance_name="$1"
   id=$(instance_id "$instance_name")
-  aws ec2 reboot-instances --instance-ids "$id"
+  local aws_profile_option
+  aws_profile_option=$(get_aws_profile)
+  aws ec2 reboot-instances --profile $aws_profile_option --instance-ids "$id"
 }
 
 # axiom-power axiom-images
@@ -601,12 +636,14 @@ delete_instances() {
     name_array=($names)
 
     local regions
-    regions=$(aws ec2 describe-regions --query "Regions[].RegionName" --output text)
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    regions=$(aws ec2 describe-regions --profile $aws_profile_option --query "Regions[].RegionName" --output text)
 
     # Fetch minimized instance data per region in parallel
     for region in $regions; do
         (
-            aws ec2 describe-instances --region "$region" \
+            aws ec2 describe-instances --profile $aws_profile_option --region "$region" \
                 --query "Reservations[].Instances[].{InstanceId: InstanceId, Name: Tags[?Key=='Name']|[0].Value, State: State.Name, AZ: Placement.AvailabilityZone}" \
                 --output json > "$tempdir/$region.json" 2>/dev/null
         ) &
@@ -648,14 +685,14 @@ delete_instances() {
         if [ ${#ids_to_delete[@]} -gt 0 ]; then
             if [[ "$force" == "true" ]]; then
                 echo -e "${Red}Deleting in $region: ${ids_to_delete[*]}${Color_Off}"
-                aws ec2 terminate-instances --instance-ids "${ids_to_delete[@]}" --region "$region" >/dev/null 2>&1
+                aws ec2 terminate-instances --profile $aws_profile_option --instance-ids "${ids_to_delete[@]}" --region "$region" >/dev/null 2>&1
             else
                 for id in "${ids_to_delete[@]}"; do
                     echo -e -n "Delete instance $id in $region? (y/N): "
                     read ans
                     if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
                         echo -e "${Red}Deleting $id...${Color_Off}"
-                        aws ec2 terminate-instances --instance-ids "$id" --region "$region" >/dev/null 2>&1
+                        aws ec2 terminate-instances --profile $aws_profile_option --instance-ids "$id" --region "$region" >/dev/null 2>&1
                     else
                         echo "Aborted $id."
                     fi
@@ -704,7 +741,9 @@ create_instances() {
     count="${#names[@]}"
 
     # Create instances in one API call and capture output
-    instance_data=$( aws ec2 run-instances \
+    local aws_profile_option
+    aws_profile_option=$(get_aws_profile)
+    instance_data=$( aws ec2 run-instances --profile $aws_profile_option \
         --image-id "$image_id" \
         --count "$count" \
         --instance-type "$size" \
@@ -729,7 +768,7 @@ create_instances() {
         instance_name="${names[$i]}"
 
         # Use create-tags to set the Name tag
-        aws ec2 create-tags \
+        aws ec2 create-tags --profile $aws_profile_option \
            --resources "$instance_id" \
            --region "$region" \
            --tags Key=Name,Value="$instance_name" &
@@ -751,7 +790,7 @@ create_instances() {
     while [ "$elapsed" -lt "$timeout" ]; do
         all_ready=true
         current_statuses=$(
-            aws ec2 describe-instances \
+            aws ec2 describe-instances --profile $aws_profile_option \
                 --instance-ids "${instance_ids[@]}" \
                 --region "$region" \
                 --query 'Reservations[].Instances[].{Id:InstanceId,State:State.Name,PublicIp:PublicIpAddress}' \

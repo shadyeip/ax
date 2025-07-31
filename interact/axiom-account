@@ -238,20 +238,38 @@ if [[ "$provider" == "aws" ]]; then
 
     if [[ -n "$aws_access_key" && -n "$aws_secret_access_key" ]]; then
         echo -e "${BGreen}Configuring AWS CLI with credentials from axiom.json...${Color_Off}"
-        aws configure set aws_access_key_id "$aws_access_key"
-        aws configure set aws_secret_access_key "$aws_secret_access_key"
-        aws configure set region "$aws_region"
+        # Get AWS profile option from axiom.json
+        aws_profile=$(jq -r '.aws_profile // empty' "$AXIOM_PATH/axiom.json" 2>/dev/null)
+        if [[ -n "$aws_profile" && "$aws_profile" != "null" ]]; then
+            aws configure set aws_access_key_id "$aws_access_key" --profile "$aws_profile"
+            aws configure set aws_secret_access_key "$aws_secret_access_key" --profile "$aws_profile"
+            aws configure set region "$aws_region" --profile "$aws_profile"
+        else
+            aws configure set aws_access_key_id "$aws_access_key"
+            aws configure set aws_secret_access_key "$aws_secret_access_key"
+            aws configure set region "$aws_region"
+        fi
     else
         echo -e "${BRed}No AWS credentials found in axiom.json. Please set them manually.${Color_Off}"
         bootstrap
     fi
 
     # Check if AWS CLI is authenticated
-    if ! aws sts get-caller-identity &> /dev/null; then
-        echo -e "${BRed}AWS CLI is not authenticated.${Color_Off} Running bootstrap..."
-        bootstrap
+    aws_profile=$(jq -r '.aws_profile // empty' "$AXIOM_PATH/axiom.json" 2>/dev/null)
+    if [[ -n "$aws_profile" && "$aws_profile" != "null" ]]; then
+        if ! aws sts get-caller-identity --profile "$aws_profile" &> /dev/null; then
+            echo -e "${BRed}AWS CLI is not authenticated.${Color_Off} Running bootstrap..."
+            bootstrap
+        else
+            echo -e "${BGreen}AWS CLI is authenticated.${Color_Off}"
+        fi
     else
-        echo -e "${BGreen}AWS CLI is authenticated.${Color_Off}"
+        if ! aws sts get-caller-identity &> /dev/null; then
+            echo -e "${BRed}AWS CLI is not authenticated.${Color_Off} Running bootstrap..."
+            bootstrap
+        else
+            echo -e "${BGreen}AWS CLI is authenticated.${Color_Off}"
+        fi
     fi
 
 fi # provider aws
