@@ -30,46 +30,6 @@ case $BASEOS in
 *) ;;
 esac
 
-check_and_create_firewall_rule() {
-    firewall_rule_name="axiom-ssh"
-    expected_target_tag="axiom-ssh"
-
-    # Check if the firewall rule exists
-    rule_exists=$(gcloud compute firewall-rules list --filter="name=$firewall_rule_name" --format="value(name)")
-
-    if [[ -z "$rule_exists" ]]; then
-        echo "Firewall rule '$firewall_rule_name' does not exist. Creating it now..."
-
-        # Create the firewall rule to allow SSH (port 2266)
-        gcloud compute firewall-rules create "$firewall_rule_name" \
-            --allow tcp:2266 \
-            --direction INGRESS \
-            --priority 1000 \
-            --target-tags "$expected_target_tag" \
-            --description "Allow SSH traffic" \
-            --quiet
-
-        echo "Firewall rule '$firewall_rule_name' created successfully."
-    else
-        echo "Firewall rule '$firewall_rule_name' already exists."
-
-        # Check the current target tags
-        current_target_tag=$(gcloud compute firewall-rules describe "$firewall_rule_name" --format="value(targetTags)")
-
-        if [[ "$current_target_tag" != *"$expected_target_tag"* ]]; then
-            echo "Target tag is not set to '$expected_target_tag'. Updating the firewall rule..."
-
-            # Update the firewall rule to set the correct target tag
-            gcloud compute firewall-rules update "$firewall_rule_name" \
-                --target-tags="$expected_target_tag" \
-                --quiet
-
-            echo "Firewall rule '$firewall_rule_name' updated with the correct target tag '$expected_target_tag'."
-        else
-            echo "Firewall rule '$firewall_rule_name' already has the correct target tag '$expected_target_tag'."
-        fi
-    fi
-}
 
 # Function to clean up duplicate repository entries
 function clean_gcloud_repos() {
@@ -106,29 +66,6 @@ if [[ "$(printf '%s\n' "$installed_version" "$GCloudCliVersion" | sort -V | head
     packer plugins install github.com/hashicorp/googlecompute
 fi
 
-# Function to check billing and API enablement after authentication
-function check_gcp_billing_and_apis() {
-    project_id=$(gcloud config get-value project)
-
-    echo "Checking if billing is enabled for project [$project_id]..."
-
-    # Check if billing is enabled
-    billing_info=$(gcloud beta billing projects describe "$project_id" --format="value(billingEnabled)")
-    if [[ "$billing_info" != "True" ]]; then
-        echo -e "${BRed}Billing is not enabled for project [$project_id]. Please enable billing to proceed.${Color_Off}"
-        echo -e "Visit https://console.cloud.google.com/billing to enable billing."
-        exit 1
-    fi
-
-    # Check if necessary APIs are enabled
-    echo "Checking if Cloud Resource Manager, Compute and Storage APIs are enabled..."
-    gcloud services enable storage-api.googleapis.com
-    gcloud services enable cloudresourcemanager.googleapis.com
-    gcloud services enable compute.googleapis.com
-
-    echo "APIs have been enabled. This may take a few minutes to propagate."
-}
-
 # Function to check and set project ID
 function set_project_id() {
     echo -e -n "${Green}Please enter your GCP Project ID (required): \n>> ${Color_Off}"
@@ -152,12 +89,24 @@ function set_project_id() {
 
 # Function to detect if running on a GCP Compute Engine VM
 is_gcp_vm() {
-    curl -s -f -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/id &> /dev/null
-    return $?
+    # Cache the result of the metadata server check
+    if [[ -z "$_IS_GCP_VM_CACHED" ]]; then
+        curl -s -f -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/id &> /dev/null
+        _IS_GCP_VM_RESULT=$?
+        _IS_GCP_VM_CACHED="true"
+    fi
+    return $_IS_GCP_VM_RESULT
 }
 
+# Set IS_GCP_VM globally based on the result of is_gcp_vm
+if is_gcp_vm; then
+    IS_GCP_VM="true"
+else
+    IS_GCP_VM="false"
+fi
+
 function gcp_setup() {
-    if is_gcp_vm; then
+    if [[ "$IS_GCP_VM" == "true" ]]; then
         echo -e "${BGreen}Running on a GCP Compute Engine VM. Using VM's service account for ADC.${Color_Off}"
         # No need to run gcloud auth application-default login
     else
@@ -166,49 +115,32 @@ function gcp_setup() {
     fi
 
     # Set the project ID (ADC should handle this, but we'll keep the function for consistency)
-    set_project_id
-
-    # Check if billing is enabled and APIs are activated after authentication
-    check_gcp_billing_and_apis
-
-    # Proceed to region and zone setup
-    echo -e -n "${Green}Listing available regions: \n${Color_Off}"
-    gcloud compute regions list
-
-    default_region="us-central1"
-    echo -e -n "${Green}Please enter your default region (you can always change this later with axiom-region select \$region): Default '$default_region', press enter \n>> ${Color_Off}"
-    read region
-    if [[ "$region" == "" ]]; then
-        echo -e "${Blue}Selected default option '$default_region'${Color_Off}"
-        region="$default_region"
+    if [[ "$IS_GCP_VM" == "true" ]]; then
+        # If on a GCP VM, try to get project ID from metadata server
+        project_id=$(curl -s -f -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id)
+        echo -e "${BGreen}Got [$project_id] from metadata.${Color_Off}"
+    else
+        set_project_id # Always prompt if not on a GCP VM
     fi
 
-    echo -e -n "${Green}Listing available zones for region: $region \n${Color_Off}"
+    # Proceed to region and zone setup
+    echo -e -n "${Green}Please enter your default region (e.g., us-central1, us-east1, europe-west1): Default 'us-central1', press enter \n>> ${Color_Off}"
+    read region
+    if [[ "$region" == "" ]]; then
+        echo -e "${Blue}Selected default option 'us-central1'${Color_Off}"
+        region="us-central1"
+    fi
 
-    zones=$(gcloud compute zones list | grep $region | cut -d ' ' -f 1 | sort)
-    echo "$zones" | tr ' ' '\n'
-    default_zone="$(echo $zones | tr ' ' '\n' | head -n 1)"
-    echo -e -n "${Green}Please enter your default zone:  Default '$default_zone', press enter \n>> ${Color_Off}"
+    default_zone="us-central1-a"
+    echo -e -n "${Green}Please enter your default zone (e.g., us-central1-a, us-east1-b, europe-west1-c): Default '$default_zone', press enter \n>> ${Color_Off}"
     read zone
     if [[ "$zone" == "" ]]; then
         echo -e "${Blue}Selected default option '${default_zone}'${Color_Off}"
         zone="${default_zone}"
     fi
-    echo -e "${BGreen}Available GCP machine types for zone: $zone${Color_Off}"
-
-    default_size_search=n1-standard-1
-    # List available machine types in the selected zone
-    gcloud compute machine-types list --zones $zone --format="table(name, description)" | tee /tmp/gcp-machine-types.txt
-
-    echo -e -n "${Green}Please enter the machine type: Default '$default_size_search', press enter \n>> ${Color_Off}"
+    default_size_search="n1-standard-1"
+    echo -e -n "${Green}Please enter the machine type (e.g., n1-standard-1, e2-medium, c2-standard-4): Default '$default_size_search', press enter \n>> ${Color_Off}"
     read machine_type
-
-    # Validate the machine type
-    while ! grep -q "^$machine_type" /tmp/gcp-machine-types.txt; do
-        echo -e "${BRed}Invalid machine type. Please select a valid machine type from the list.${Color_Off}"
-        echo -e -n "${Green}Please enter the machine type (e.g. 'n1-standard-1'): ${Color_Off}"
-        read machine_type
-    done
 
     # Save the selected machine type in axiom.json
     if [[ "$machine_type" == "" ]]; then
@@ -235,7 +167,10 @@ function gcp_setup() {
         read disk_size
     done
 
-    check_and_create_firewall_rule
+    # IMPORTANT: Firewall rules (e.g., for SSH on port 2266) must be configured manually
+    # in your GCP project. This script no longer attempts to create or manage them
+    # due to minimal service account permissions. Ensure appropriate firewall rules
+    # are in place for Axiom to function correctly.
 
     # Generate the profile data with the correct keys
     data="$(echo "{\"project\":\"$project_id\",\"physical_region\":\"$region\",\"default_size\":\"$machine_type\",\"region\":\"$zone\",\"provider\":\"gcp\",\"default_disk_size\":\"$disk_size\"}")"
