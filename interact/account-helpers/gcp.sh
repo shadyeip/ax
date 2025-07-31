@@ -1,6 +1,7 @@
 #!/bin/bash
 
-AXIOM_PATH="$HOME/.axiom"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+AXIOM_PATH="$(dirname "$SCRIPT_DIR")" # Assumes gcp.sh is in interact/account-helpers/
 source "$AXIOM_PATH/interact/includes/vars.sh"
 
 region=""

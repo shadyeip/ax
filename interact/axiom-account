@@ -1,6 +1,7 @@
 #!/bin/bash
 
-AXIOM_PATH="$HOME/.axiom"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+AXIOM_PATH="$(dirname "$SCRIPT_DIR")" # Assumes axiom-account is in interact/
 source "$AXIOM_PATH/interact/includes/vars.sh"
 
 BASEOS="$(uname)"
@@ -255,8 +256,7 @@ if [[ "$provider" == "aws" ]]; then
 
 fi # provider aws
 
-# check installed version of gcloud cli and update if needed. check for valid token. If token isnt valid, kick off account bootstrap
-#
+# check installed version of gcloud cli and update if needed.
 if [[ "$provider" == "gcp" ]]; then
     echo -e "${Green}Checking gcloud version...${Color_Off}"
 
@@ -265,7 +265,7 @@ if [[ "$provider" == "gcp" ]]; then
 
     # Compare installed version with desired version (set in vars.sh)
     if [[ "$(printf '%s\n' "$installed_version" "$GCloudCliVersion" | sort -V | head -n 1)" != "$GCloudCliVersion" ]]; then
-        echo "Installed version of gcloud is lower than required GCloudCliVersion in ~/.axiom/interact/includes/vars.sh"
+        echo "Installed version of gcloud is lower than required GCloudCliVersion in $AXIOM_PATH/interact/includes/vars.sh"
 
         # Install or update gcloud based on the OS
         if [[ $BASEOS == "Mac" ]]; then
@@ -294,26 +294,16 @@ if [[ "$provider" == "gcp" ]]; then
     echo -e "${BGreen}Installing GCP packer plugin...${Color_Off}"
     packer plugins install github.com/hashicorp/googlecompute
 
-    # Configure gcloud using service account credentials from axiom.json
-    echo -e "${BGreen}Configuring gcloud CLI with credentials from axiom.json...${Color_Off}"
-    service_account_key="$(jq -r '.service_account_key' "$AXIOM_PATH"/accounts/"$1".json)"
+    echo -e "${BGreen}Setting gcloud CLI configuration from axiom.json...${Color_Off}"
+    gcloud config set project "$(jq -r '.project' "$AXIOM_PATH"/axiom.json)"
+    gcloud config set compute/region "$(jq -r '.physical_region' "$AXIOM_PATH"/axiom.json)"
+    gcloud config set compute/zone "$(jq -r '.region' "$AXIOM_PATH"/axiom.json)"
 
-    if [[ -n "$service_account_key" ]]; then
-        gcloud auth activate-service-account --key-file="$service_account_key"
-        gcloud config set project "$(jq -r '.project' "$AXIOM_PATH"/accounts/"$1".json)"
-        gcloud config set compute/region "$(jq -r '.physical_region' "$AXIOM_PATH"/accounts/"$1".json)"
-        gcloud config set compute/zone "$(jq -r '.region' "$AXIOM_PATH"/accounts/"$1".json)"
-
-        # Check if gcloud is authenticated
-        if ! gcloud auth list --filter=status:ACTIVE &> /dev/null; then
-            echo -e "${BRed}gcloud is not authenticated. Running bootstrap...${Color_Off}"
-            bootstrap
-        else
-            echo -e "${BGreen}gcloud is authenticated.${Color_Off}"
-        fi
+    # Check if gcloud is authenticated (via ADC)
+    if ! gcloud auth list --filter=status:ACTIVE &> /dev/null; then
+        echo -e "${BRed}gcloud is not authenticated. Please run 'gcloud auth application-default login' and 'gcloud auth login' to authenticate.${Color_Off}"
     else
-        echo -e "${BRed}No service account key found in axiom.json. Please set it manually.${Color_Off}"
-        bootstrap
+        echo -e "${BGreen}gcloud is authenticated.${Color_Off}"
     fi
 fi # provider gcp
 
