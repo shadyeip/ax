@@ -1,5 +1,6 @@
 #!/bin/bash
-AXIOM_PATH="$HOME/.axiom"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+AXIOM_PATH="$(dirname "$SCRIPT_DIR")" # Assumes axiom-configure is in interact/
 if [ -f "$AXIOM_PATH/interact/includes/vars.sh" ] ; then
 source "$AXIOM_PATH/interact/includes/vars.sh"
 fi
@@ -26,45 +27,6 @@ echo '
  "𝓼𝓽𝓸𝓵𝓮𝓷 𝓯𝓻𝓸𝓶 𝓪𝔁𝓲𝓸𝓶: 𝓽𝓱𝓮 𝓭𝔂𝓷𝓪𝓶𝓲𝓬 𝓲𝓷𝓯𝓻𝓪𝓼𝓽𝓻𝓾𝓬𝓽𝓾𝓻𝓮 𝓯𝓻𝓪𝓶𝓮𝔀𝓸𝓻𝓴 𝓯𝓸𝓻 𝓮𝓿𝓮𝓻𝔂𝓫𝓸𝓭𝔂! - @𝓹𝓻𝔂0𝓬𝓬 @0𝔁𝓽𝓪𝓿𝓲𝓪𝓷"
  ' | xargs shuf -n1 -e
 echo ''
-
-###########################################################################################################
-# manage auto-update settings
-#
-manage_auto_update() {
-    auto_update_one_liner='[ $[ $RANDOM % 16 ] == 0 ] && $HOME/.axiom/interact/axiom-update >> /dev/null 2>&1'
-
-    # Check if auto_update is explicitly set
-    if [ -z "${auto_update+x}" ]; then
-        # Loop until a valid response is given
-        while true; do
-            echo -e -n "${BYellow}Do you want to periodically update axiom automatically in the background (recommended but optional)? y/n: \n>> ${Color_Off}"
-            read acc
-
-            if [[ "$acc" == "y" ]] || [[ "$acc" == "yes" ]]; then
-                auto_update="yes"
-                break
-            elif [[ "$acc" == "n" ]] || [[ "$acc" == "no" ]]; then
-                auto_update="no"
-                break
-            else
-                echo -e "${BRed}Invalid response. Please enter 'y' for yes or 'n' for no.${Color_Off}"
-            fi
-        done
-    fi
-
-    # If auto_update is true, add the auto_update_one_liner to .auto_update
-    if [[ "$auto_update" == "yes" ]]; then
-         echo "$auto_update_one_liner" > "$AXIOM_PATH/interact/includes/.auto_update"
-         echo "Auto-update has been enabled."
-
-    # If auto_update is false, delete .auto_update
-    elif [[ "$auto_update" == "no" ]]; then
-        rm -f "$AXIOM_PATH/interact/includes/.auto_update"
-        echo "Auto-update has been disabled."
-    else
-        echo "Invalid value for auto_update. Please use 'yes' or 'no'."
-    fi
-}
 
 ###########################################################################################################
 # Shell setup functions
@@ -291,14 +253,6 @@ do
             set -xv
             set=true
             pass+=($i)
-       fi
-       if [[ "$arg" == "--auto-update" ]]; then
-            n=$((i+1))
-            auto_update=$(echo ${!n})
-            auto_update_flag="true"
-            set=true
-            pass+=($i)
-            pass+=($n)
        fi
        if [[ "$arg" == "--run" ]] || [[ "$arg" == "--setup" ]]; then
             setup=true
@@ -565,14 +519,7 @@ if [[ $BASEOS == "Mac" ]]; then
     SHELL=$(which zsh)
 fi
 
-if [ ! -d "$AXIOM_PATH" ]; then
-    echo -e "${BGreen}Installing Ax scripts...${Color_Off}"
-    git clone https://github.com/attacksurge/ax "$AXIOM_PATH"
-    AXIOM_PATH="$HOME/.axiom"
-    source "$AXIOM_PATH/interact/includes/vars.sh"
-else
-    cd "$AXIOM_PATH" && git pull
-fi
+source "$AXIOM_PATH/interact/includes/vars.sh"
 
 if [[ $BASEOS == "Linux" ]] ; then
 if [[ $usershell == "omz" ]]|| [[ $usershell == 'Oh my zsh' ]] || [[ $usershell == 'Oh My Zsh' ]] || [[ $usershell == "OMZ" ]] ; then
@@ -613,13 +560,6 @@ fi
 if [ -z ${config:+x} ]; then
  if [[ "$unattended" == "true" ]]; then
   echo "Unattended setup"
-  if [ -z ${auto_update:+x} ]; then
-   auto_update="yes"
-   manage_auto_update
-  else
-   manage_auto_update
-  fi
-
   mkdir  -p "$HOME"/.axiom/accounts/
 
 else
@@ -628,7 +568,6 @@ else
 # Default setup logic ( e.g. when --unattended and --config args are not used
 #
 mkdir -p "${HOME}/.axiom/tmp/"
-manage_auto_update
 echo -e "${BGreen}Configuring your cloud account...${Color_Off}"
 "$AXIOM_PATH"/interact/axiom-account-setup
 
@@ -673,7 +612,7 @@ else
   echo -e "${BGreen}Cloud account configuration passed from command line...${Color_Off}"
  fi
 fi
-export PATH="$PATH:$HOME/.axiom/interact"
+export PATH="$PATH:$AXIOM_PATH/interact"
 
 if [[ $unattended == "true" ]] ; then
 echo -e "${BWhite}Ax Framework install complete. Run ax account-setup to use!...${Color_Off}"
